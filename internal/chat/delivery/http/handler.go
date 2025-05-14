@@ -42,11 +42,30 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err := h.uc.CreateChat(c.Request.Context(), &chat)
+
+	// Получаем X-User-ID из заголовка
+	userIDStr := c.GetHeader("X-User-ID")
+	if userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing X-User-ID header"})
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid X-User-ID header"})
+		return
+	}
+
+	// Устанавливаем created_by
+	chat.CreatedBy = userID
+
+	// Создаём чат
+	err = h.uc.CreateChat(c.Request.Context(), &chat)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusCreated, chat)
 }
 

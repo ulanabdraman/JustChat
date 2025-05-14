@@ -3,7 +3,6 @@ package postgres
 import (
 	"JustChat/internal/chat/model"
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 )
@@ -30,9 +29,6 @@ func (r *chatRepository) GetByID(ctx context.Context, id int64) (*model.Chat, er
 
 	var chat model.Chat
 	if err := row.Scan(&chat.ID, &chat.Name, &chat.Type, &chat.CreatedBy, &chat.CreatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("getByID chat repo: %w", err)
 	}
 	return &chat, nil

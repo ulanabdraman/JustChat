@@ -24,11 +24,11 @@ func NewUserRepo(db *sqlx.DB) UserRepo {
 }
 
 func (r *userRepo) GetByID(ctx context.Context, id int64) (*model.User, error) {
-	query := `SELECT id, type, username, online, was_online, created_at FROM users WHERE id = $1`
+	query := `SELECT id, type, username, online, created_at FROM users WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	var user model.User
-	err := row.Scan(&user.ID, &user.Type, &user.Username, &user.Online, &user.WasOnline, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.Type, &user.Username, &user.Online, &user.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -57,13 +57,20 @@ func (r *userRepo) GetChatsByUserID(ctx context.Context, userID int64) ([]int64,
 	return chatIDs, nil
 }
 func (r *userRepo) Create(ctx context.Context, user *model.User) error {
-	query := `INSERT INTO users(type,username) VALUES ($1,$2)`
-	_, err := r.db.ExecContext(ctx, query, user.Type, user.Username)
+	query := `INSERT INTO users(type,username,password) VALUES ($1,$2,$3)`
+	_, err := r.db.ExecContext(ctx, query, user.Type, user.Username, user.Password)
 	if err != nil {
 		return fmt.Errorf("create user repo: %w", err)
 	}
 	return nil
 }
 func (r *userRepo) GetByUsername(ctx context.Context, username string) (*model.User, error) {
-	return nil, nil
+	query := `SELECT id,type,username,password FROM USERS WHERE username = $1`
+	row := r.db.QueryRowContext(ctx, query, username)
+	var user model.User
+	err := row.Scan(&user.ID, &user.Type, &user.Username, &user.Password)
+	if err != nil {
+		return nil, fmt.Errorf("getByUsername user repo: %w", err)
+	}
+	return &user, nil
 }

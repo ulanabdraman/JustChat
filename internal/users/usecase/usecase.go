@@ -4,6 +4,7 @@ import (
 	"JustChat/internal/users/model"
 	"JustChat/internal/users/repository/postgres"
 	"context"
+	"errors"
 )
 
 type UserUseCase interface {
@@ -30,8 +31,17 @@ func (uc *userUseCase) GetUserChats(ctx context.Context, userID int64) ([]int64,
 }
 
 func (uc *userUseCase) CreateUser(ctx context.Context, user *model.User) error {
+	if user.Type == "" {
+		user.Type = "user"
+	}
+
+	if user.Type != "admin" && user.Type != "user" && user.Type != "bot" {
+		return errors.New("invalid user type")
+	}
+
 	return uc.repo.Create(ctx, user)
 }
+
 func (uc *userUseCase) GetByUsername(ctx context.Context, username string) (*model.User, error) {
 	return uc.repo.GetByUsername(ctx, username)
 }

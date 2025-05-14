@@ -33,7 +33,10 @@ func (u *jwtUC) ParseToken(tokenStr string) (*model.AuthClaims, error) {
 		return u.secretKey, nil
 	})
 
-	if err != nil || !token.Valid {
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
 		return nil, errors.New("invalid token")
 	}
 

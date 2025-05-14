@@ -20,7 +20,7 @@ import (
 	userRepo "JustChat/internal/users/repository/postgres"
 	userUCpkg "JustChat/internal/users/usecase"
 
-	"JustChat/internal/middleware" // <- добавь сам middleware
+	"JustChat/internal/middleware"
 
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -29,16 +29,13 @@ import (
 )
 
 func main() {
-	// Инициализация БД
 	dbconn := db.InitDB()
 	defer dbconn.Close()
 
 	fmt.Println("Приложение запущено, база данных подключена.")
 
-	// Инициализация роутера
 	router := gin.Default()
 
-	// Инициализация зависимостей
 	userRepository := userRepo.NewUserRepo(dbconn)
 	userUseCase := userUCpkg.NewUserUseCase(userRepository)
 
@@ -53,31 +50,28 @@ func main() {
 
 	hub := websock.NewHub()
 
-	// API группы
 	api := router.Group("/api")
 
-	// Public routes
-	api.POST("/login", authHandler.Login) // <-- login endpoint
-	userHand.NewUserHandler(api, userUseCase)
+	api.POST("/login", authHandler.Login)
+	api.POST("/register", authHandler.Register)
 
 	// WebSocket (без middleware пока, если нужен — надо передавать токен)
 	api.GET("/ws", func(c *gin.Context) {
 		websock.ServeWS(hub, chatUseCase, messageUseCase, c.Writer, c.Request)
 	})
 
-	// Protected routes
+	// 401 защита
 	protected := api.Group("/")
-	protected.Use(middleware.AuthMiddleware(authUC)) // <-- middleware подключения
+	protected.Use(middleware.AuthMiddleware(authUC))
 	chatHand.NewChatHandler(protected, chatUseCase)
 	messageHand.NewMessageHandler(protected, messageUseCase)
+	userHand.NewUserHandler(protected, userUseCase)
 
-	// Порт можно брать из env
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Запуск сервера
 	go hub.Run()
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Не удалось запустить сервер: %v", err)

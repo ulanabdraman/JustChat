@@ -4,6 +4,7 @@ import (
 	"JustChat/internal/auth/usecase"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -22,8 +23,11 @@ func AuthMiddleware(authUC usecase.JWTUsecase) gin.HandlerFunc {
 			return
 		}
 
-		// сохраняем userID в контексте
+		// Устанавливаем в контекст
 		c.Set("userID", userID)
+
+		// Устанавливаем в заголовок X-User-ID
+		c.Request.Header.Set("X-User-ID", strconv.FormatInt(userID.UserID, 10))
 		c.Next()
 	}
 }
