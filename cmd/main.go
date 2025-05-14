@@ -57,7 +57,7 @@ func main() {
 
 	// WebSocket (без middleware пока, если нужен — надо передавать токен)
 	api.GET("/ws", func(c *gin.Context) {
-		websock.ServeWS(hub, chatUseCase, messageUseCase, c.Writer, c.Request)
+		websock.ServeWS(hub, chatUseCase, messageUseCase, authUC, c.Writer, c.Request)
 	})
 
 	// 401 защита

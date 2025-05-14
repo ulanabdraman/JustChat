@@ -1,6 +1,7 @@
 package websock
 
 import (
+	AUC "JustChat/internal/auth/usecase"
 	CUC "JustChat/internal/chat/usecase"
 	"JustChat/internal/messages/model"
 	MUC "JustChat/internal/messages/usecase"
@@ -25,18 +26,34 @@ type Connection struct {
 	messageUsecase MUC.MessageUseCase
 }
 
-func ServeWS(hub *Hub, chatUC CUC.ChatUsecase, msgUC MUC.MessageUseCase, w http.ResponseWriter, r *http.Request) {
+func ServeWS(hub *Hub, chatUC CUC.ChatUsecase, msgUC MUC.MessageUseCase, authUC AUC.JWTUsecase, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*") // или указать origin явно
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	token := r.Header.Get("Sec-WebSocket-Protocol")
+	if token == "" {
+		http.Error(w, "missing token", http.StatusUnauthorized)
+		return
+	}
+
+	// Проставим обратно, иначе браузер может закрыть соединение
+	w.Header().Set("Sec-WebSocket-Protocol", token)
+
+	claims, err := authUC.ParseToken(token)
+	if err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // ⚠️ Разрешаем все Origin
+			return true // ⚠️ в проде нужно проверять Origin
 		},
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("WebSocket upgrade failed:", err)
-		return
-	}
+	ws, err := upgrader.Upgrade(w, r, http.Header{
+		"Sec-WebSocket-Protocol": []string{token},
+	})
+
 	ctx, cancel := context.WithCancel(r.Context())
 	conn := &Connection{
 		ws:             ws,
@@ -44,6 +61,7 @@ func ServeWS(hub *Hub, chatUC CUC.ChatUsecase, msgUC MUC.MessageUseCase, w http.
 		hub:            hub,
 		ctx:            ctx,
 		cancel:         cancel,
+		userID:         claims.UserID,
 		chatUsecase:    chatUC,
 		messageUsecase: msgUC,
 	}
@@ -71,7 +89,6 @@ func (c *Connection) readPump() {
 	}
 
 	c.chatID = init.ChatID
-	c.userID = init.UserID
 
 	chat, err := c.chatUsecase.GetChatByID(c.ctx, init.ChatID)
 	if err != nil {
@@ -90,31 +107,29 @@ func (c *Connection) readPump() {
 		Messages: messages,
 	}
 
-	// После получения данных, передаем их в канал для отправки
 	c.hub.register <- c
 	c.send <- resp
 
-	// слушаем дальнейшие сообщения
 	for {
 		_, rawMessage, err := c.ws.ReadMessage()
 		if err != nil {
 			break
 		}
 
-		// Обработка сообщения перед сохранением в базу
 		var message model.Message
 		if err := json.Unmarshal(rawMessage, &message); err != nil {
 			log.Println("Failed to unmarshal data into Message:", err)
 			continue
 		}
 
-		// Сохранение сообщения в базе данных
+		message.CreatorID = c.userID
+		message.ChatID = c.chatID
+
 		send, err := c.messageUsecase.SaveMessage(c.ctx, &message)
 		if err != nil {
 			log.Println(err, message)
 		}
 
-		// Далее можно передать это сообщение в канал для дальнейшей отправки
 		c.hub.Broadcast(c.chatID, send)
 	}
 }

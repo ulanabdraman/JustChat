@@ -34,11 +34,33 @@ func (r *chatRepository) GetByID(ctx context.Context, id int64) (*model.Chat, er
 	return &chat, nil
 }
 func (r *chatRepository) Create(ctx context.Context, chat *model.Chat) error {
-	query := `INSERT INTO chats(name,type,created_by) VALUES ($1,$2,$3)`
-	_, err := r.db.ExecContext(ctx, query, chat.Name, chat.Type, chat.CreatedBy)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("create chat repo: %w", err)
+		return fmt.Errorf("begin transaction: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	// Вставляем чат и получаем его ID
+	query := `INSERT INTO chats(name, type, created_by) VALUES ($1, $2, $3) RETURNING id`
+	var chatID int64
+	err = tx.QueryRowContext(ctx, query, chat.Name, chat.Type, chat.CreatedBy).Scan(&chatID)
+	if err != nil {
+		return fmt.Errorf("insert chat: %w", err)
+	}
+
+	// Добавляем создателя в chatmembers
+	memberQuery := `INSERT INTO chat_members(chat_id, user_id) VALUES ($1, $2)`
+	_, err = tx.ExecContext(ctx, memberQuery, chatID, chat.CreatedBy)
+	if err != nil {
+		return fmt.Errorf("insert chatmember: %w", err)
+	}
+
 	return nil
 }
 

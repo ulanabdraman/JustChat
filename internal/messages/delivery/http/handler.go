@@ -57,6 +57,18 @@ func (h *MessageHandler) SaveMessage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
 		return
 	}
+	// Получаем X-User-ID из заголовка
+	userIDStr := c.GetHeader("X-User-ID")
+	if userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing X-User-ID header"})
+		return
+	}
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid X-User-ID header"})
+		return
+	}
+	message.CreatorID = userID
 
 	tosend, err := h.uc.SaveMessage(c.Request.Context(), &message)
 	if err != nil {

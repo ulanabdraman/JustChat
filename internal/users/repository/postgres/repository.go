@@ -39,7 +39,7 @@ func (r *userRepo) GetByID(ctx context.Context, id int64) (*model.User, error) {
 }
 
 func (r *userRepo) GetChatsByUserID(ctx context.Context, userID int64) ([]int64, error) {
-	query := `SELECT chat_id FROM chat_users WHERE user_id = $1`
+	query := `SELECT chat_id FROM chat_members WHERE user_id = $1`
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("getChatsByUserID user repo: %w", err)

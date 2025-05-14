@@ -6,8 +6,7 @@ import (
 )
 
 type InitPayload struct {
-	ChatID int64 `json:"chat"`
-	UserID int64 `json:"user_id"`
+	ChatID int64 `json:"chat_id"`
 }
 type InitResponse struct {
 	Chat     chats.Chat         `json:"chat"`
