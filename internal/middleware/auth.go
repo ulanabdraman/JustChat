@@ -24,7 +24,7 @@ func AuthMiddleware(authUC usecase.JWTUsecase) gin.HandlerFunc {
 		}
 
 		// Устанавливаем в контекст
-		c.Set("userID", userID)
+		c.Set("X-User-ID", userID)
 
 		// Устанавливаем в заголовок X-User-ID
 		c.Request.Header.Set("X-User-ID", strconv.FormatInt(userID.UserID, 10))

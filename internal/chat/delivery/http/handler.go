@@ -15,20 +15,25 @@ type ChatHandler struct {
 
 func NewChatHandler(r *gin.RouterGroup, uc usecase.ChatUsecase) {
 	h := &ChatHandler{uc: uc}
-	chats := r.Group("/chats")
+	chats := r.Group("/chat")
 	{
 		chats.GET("/:id", h.GetChat)
 		chats.POST("/", h.CreateChat)
 		chats.PUT("/:id", h.UpdateChatName)
-		chats.POST("/:id/user", h.AddUser)
-		chats.DELETE("/:id/user", h.RemoveUser)
-		chats.DELETE("/:id/delete", h.DeleteChat)
+		chats.DELETE("/:id", h.DeleteChat)
 	}
 }
 
 func (h *ChatHandler) GetChat(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	chat, err := h.uc.GetChatByID(c.Request.Context(), id)
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	chat, err := h.uc.GetChatByID(c.Request.Context(), id, myuserID)
+
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -60,13 +65,13 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 	chat.CreatedBy = userID
 
 	// Создаём чат
-	err = h.uc.CreateChat(c.Request.Context(), &chat)
+	chatID, err := h.uc.CreateChat(c.Request.Context(), &chat, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, chat)
+	c.JSON(http.StatusCreated, chatID)
 }
 
 func (h *ChatHandler) UpdateChatName(c *gin.Context) {
@@ -74,11 +79,17 @@ func (h *ChatHandler) UpdateChatName(c *gin.Context) {
 	var req struct {
 		Name string `json:"name"`
 	}
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err := h.uc.UpdateChatName(c.Request.Context(), id, req.Name)
+	err = h.uc.UpdateChatName(c.Request.Context(), id, req.Name, myuserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -86,50 +97,16 @@ func (h *ChatHandler) UpdateChatName(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *ChatHandler) AddUser(c *gin.Context) {
-	chatID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	var request struct {
-		UserID int64 `json:"user_id"`
-	}
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-
-	if err := h.uc.AddUserToChat(c.Request.Context(), chatID, request.UserID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user"})
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
-// RemoveUser удаляет пользователя из чата
-func (h *ChatHandler) RemoveUser(c *gin.Context) {
-	chatID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	var request struct {
-		UserID int64 `json:"user_id"`
-	}
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-
-	if err := h.uc.RemoveUserFromChat(c.Request.Context(), chatID, request.UserID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user"})
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
 func (h *ChatHandler) DeleteChat(c *gin.Context) {
 	chatID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-
-	if err := h.uc.DeleteChat(c.Request.Context(), chatID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear chat"})
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	if err := h.uc.DeleteChat(c.Request.Context(), chatID, myuserID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

@@ -9,7 +9,6 @@ import (
 
 type UserUseCase interface {
 	GetCurrentUser(ctx context.Context, userID int64) (*model.User, error)
-	GetUserChats(ctx context.Context, userID int64) ([]int64, error)
 	GetByUsername(ctx context.Context, username string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
 }
@@ -24,10 +23,6 @@ func NewUserUseCase(repo postgres.UserRepo) UserUseCase {
 
 func (uc *userUseCase) GetCurrentUser(ctx context.Context, userID int64) (*model.User, error) {
 	return uc.repo.GetByID(ctx, userID)
-}
-
-func (uc *userUseCase) GetUserChats(ctx context.Context, userID int64) ([]int64, error) {
-	return uc.repo.GetChatsByUserID(ctx, userID)
 }
 
 func (uc *userUseCase) CreateUser(ctx context.Context, user *model.User) error {

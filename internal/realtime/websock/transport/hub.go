@@ -1,6 +1,8 @@
-package websock
+package transport
 
 import (
+	"JustChat/internal/messages/model"
+	"context"
 	"log"
 	"sync"
 )
@@ -15,7 +17,7 @@ type Hub struct {
 
 type BroadcastMessage struct {
 	ChatID  int64
-	Message any
+	Message model.Message // JSON-сообщение
 }
 
 func NewHub() *Hub {
@@ -27,9 +29,25 @@ func NewHub() *Hub {
 	}
 }
 
-func (h *Hub) Run() {
+func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			// Контекст отменён — выход из Run
+			log.Println("Hub is shutting down due to context cancellation")
+
+			// Опционально: закрываем все подключения
+			h.mu.Lock()
+			for chatID, conns := range h.clients {
+				for conn := range conns {
+					close(conn.send)
+					delete(h.clients[chatID], conn)
+				}
+			}
+			h.mu.Unlock()
+
+			return
+
 		case conn := <-h.register:
 			h.mu.Lock()
 			if h.clients[conn.chatID] == nil {
@@ -63,6 +81,10 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) Broadcast(chatID int64, message any) {
-	h.broadcast <- BroadcastMessage{ChatID: chatID, Message: message}
+func (h *Hub) Broadcast(chat model.Message) {
+	// Преобразуем сообщение в BroadcastMessage и отправляем в канал broadcast
+	h.broadcast <- BroadcastMessage{
+		ChatID:  chat.ChatID,
+		Message: chat,
+	}
 }

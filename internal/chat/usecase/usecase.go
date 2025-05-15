@@ -3,41 +3,61 @@ package usecase
 import (
 	"JustChat/internal/chat/model"
 	"JustChat/internal/chat/repository/postgres"
+	"JustChat/internal/chatmembers/usecase"
 	"context"
 	"errors"
 )
 
 type ChatUsecase interface {
-	GetChatByID(ctx context.Context, chatID int64) (*model.Chat, error)
-	CreateChat(ctx context.Context, chat *model.Chat) error
-	UpdateChatName(ctx context.Context, chatID int64, name string) error
-	AddUserToChat(ctx context.Context, chatID int64, userID int64) error
-	RemoveUserFromChat(ctx context.Context, chatID int64, userID int64) error
-	DeleteChat(ctx context.Context, chatID int64) error
+	GetChatByID(ctx context.Context, chatID int64, myuserID int64) (*model.Chat, error)
+	CreateChat(ctx context.Context, chat *model.Chat, myuserID int64) (int64, error)
+	UpdateChatName(ctx context.Context, chatID int64, name string, myuserID int64) error
+	DeleteChat(ctx context.Context, chatID int64, myuserID int64) error
 }
 
 type chatUseCase struct {
-	repo postgres.ChatRepository
+	repo               postgres.ChatRepository
+	chatMembersUsecase usecase.ChatMemberUseCase
 }
 
-func NewChatUseCase(chatRepo postgres.ChatRepository) ChatUsecase {
+func NewChatUseCase(chatRepo postgres.ChatRepository, chatMembersUsecase usecase.ChatMemberUseCase) ChatUsecase {
 	return &chatUseCase{
-		repo: chatRepo,
+		repo:               chatRepo,
+		chatMembersUsecase: chatMembersUsecase,
 	}
 }
 
-func (uc *chatUseCase) GetChatByID(ctx context.Context, chatID int64) (*model.Chat, error) {
+func (uc *chatUseCase) GetChatByID(ctx context.Context, chatID int64, myuserID int64) (*model.Chat, error) {
+	_, err := uc.chatMembersUsecase.GetRole(ctx, chatID, myuserID)
+	if err != nil {
+		return nil, err
+	}
 	chat, err := uc.repo.GetByID(ctx, chatID)
 	if err != nil {
 		return nil, err
 	}
 	return chat, nil
 }
-func (uc *chatUseCase) CreateChat(ctx context.Context, chat *model.Chat) error {
-	return uc.repo.Create(ctx, chat)
+func (uc *chatUseCase) CreateChat(ctx context.Context, chat *model.Chat, myuserID int64) (int64, error) {
+	chatID, err := uc.repo.Create(ctx, chat)
+	if err != nil {
+		return 0, err
+	}
+	err = uc.chatMembersUsecase.AddUserToChat(ctx, chatID, myuserID, "admin", myuserID)
+	if err != nil {
+		return 0, err
+	}
+	return chatID, nil
 }
 
-func (uc *chatUseCase) UpdateChatName(ctx context.Context, chatID int64, name string) error {
+func (uc *chatUseCase) UpdateChatName(ctx context.Context, chatID int64, name string, myuserID int64) error {
+	myrole, err := uc.chatMembersUsecase.GetRole(ctx, chatID, myuserID)
+	if err != nil {
+		return err
+	}
+	if myrole == "user" {
+		return errors.New("not admin")
+	}
 	chat, err := uc.repo.GetByID(ctx, chatID)
 	if err != nil {
 		return err
@@ -54,21 +74,14 @@ func (uc *chatUseCase) UpdateChatName(ctx context.Context, chatID int64, name st
 	return nil
 }
 
-func (uc *chatUseCase) AddUserToChat(ctx context.Context, chatID int64, userID int64) error {
-	if err := uc.repo.AddUserToChat(ctx, chatID, userID); err != nil {
+func (uc *chatUseCase) DeleteChat(ctx context.Context, chatID int64, myuserID int64) error {
+	myrole, err := uc.chatMembersUsecase.GetRole(ctx, chatID, myuserID)
+	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func (uc *chatUseCase) RemoveUserFromChat(ctx context.Context, chatID int64, userID int64) error {
-	if err := uc.repo.RemoveUserFromChat(ctx, chatID, userID); err != nil {
-		return err
+	if myrole == "user" {
+		return errors.New("not admin")
 	}
-	return nil
-}
-
-func (uc *chatUseCase) DeleteChat(ctx context.Context, chatID int64) error {
 	if err := uc.repo.Delete(ctx, chatID); err != nil {
 		return err
 	}

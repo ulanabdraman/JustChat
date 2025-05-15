@@ -17,7 +17,6 @@ func NewUserHandler(r *gin.RouterGroup, uc usecase.UserUseCase) {
 	me := r.Group("/me")
 	{
 		me.GET("", h.GetMe)
-		me.GET("/chats", h.GetMyChats)
 		me.POST("/", h.CreateUser)
 	}
 }
@@ -43,21 +42,6 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-func (h *UserHandler) GetMyChats(c *gin.Context) {
-	userIDStr := c.GetHeader("X-User-ID")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil || userID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-
-	chatIDs, err := h.uc.GetUserChats(c.Request.Context(), userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"chats": chatIDs})
-}
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var user model.User
 	if err := c.ShouldBindJSON(&user); err != nil {

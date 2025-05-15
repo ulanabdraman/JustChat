@@ -1,4 +1,4 @@
-package websock
+package model
 
 import (
 	chats "JustChat/internal/chat/model"
@@ -13,5 +13,6 @@ type InitResponse struct {
 	Messages []messages.Message `json:"messages"`
 }
 type Payload struct {
-	Message messages.Message `json:"message"`
+	ChatID  int64  `json:"chat_id"`
+	Message []byte `json:"message"`
 }

@@ -3,7 +3,6 @@ package postgres
 import (
 	"JustChat/internal/messages/model"
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 )
@@ -27,12 +26,9 @@ func (m *messageRepo) GetByID(ctx context.Context, id int64) (*model.Message, er
 	var message model.Message
 	err := row.Scan(&message.ID, &message.ChatID, &message.CreatorID, &message.Text, &message.SentAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("getByID message repo: %w", err)
 	}
-	return nil, nil
+	return &message, nil
 }
 func (m *messageRepo) DeleteByID(ctx context.Context, id int64) error {
 	query := `UPDATE messages SET deleted=true WHERE id=$1 AND deleted=false`

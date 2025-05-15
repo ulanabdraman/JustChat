@@ -26,7 +26,13 @@ func NewMessageHandler(r *gin.RouterGroup, uc usecase.MessageUseCase) {
 
 func (h *MessageHandler) GetMessageByID(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	message, err := h.uc.GetMessageByID(c.Request.Context(), id)
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	message, err := h.uc.GetMessageByID(c.Request.Context(), id, myuserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -35,7 +41,13 @@ func (h *MessageHandler) GetMessageByID(c *gin.Context) {
 }
 func (h *MessageHandler) DeleteMessageByID(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	err := h.uc.DeleteMessage(c.Request.Context(), id)
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	err = h.uc.DeleteMessage(c.Request.Context(), id, myuserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -44,7 +56,13 @@ func (h *MessageHandler) DeleteMessageByID(c *gin.Context) {
 }
 func (h *MessageHandler) GetMessageByChatID(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("chat_id"), 10, 64)
-	messages, err := h.uc.GetMessageByID(c.Request.Context(), id)
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	messages, err := h.uc.GetMessagesByChatID(c.Request.Context(), id, myuserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	}
@@ -69,8 +87,13 @@ func (h *MessageHandler) SaveMessage(c *gin.Context) {
 		return
 	}
 	message.CreatorID = userID
-
-	tosend, err := h.uc.SaveMessage(c.Request.Context(), &message)
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+	tosend, err := h.uc.SaveMessage(c.Request.Context(), &message, myuserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save message: " + err.Error()})
 		return
