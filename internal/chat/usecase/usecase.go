@@ -10,6 +10,7 @@ import (
 
 type ChatUsecase interface {
 	GetChatByID(ctx context.Context, chatID int64, myuserID int64) (*model.Chat, error)
+	GetChatsByIDs(ctx context.Context, chatIDs []int64, myuserID int64) ([]*model.Chat, error)
 	CreateChat(ctx context.Context, chat *model.Chat, myuserID int64) (int64, error)
 	UpdateChatName(ctx context.Context, chatID int64, name string, myuserID int64) error
 	DeleteChat(ctx context.Context, chatID int64, myuserID int64) error
@@ -38,12 +39,28 @@ func (uc *chatUseCase) GetChatByID(ctx context.Context, chatID int64, myuserID i
 	}
 	return chat, nil
 }
+func (uc *chatUseCase) GetChatsByIDs(ctx context.Context, chatIDs []int64, myuserID int64) ([]*model.Chat, error) {
+	var result []*model.Chat
+
+	for _, chatID := range chatIDs {
+		_, err := uc.chatMembersUsecase.GetRole(ctx, chatID, myuserID)
+		if err != nil {
+			continue
+		}
+
+		chat, err := uc.repo.GetByID(ctx, chatID)
+		if err != nil {
+			continue
+		}
+
+		result = append(result, chat)
+	}
+
+	return result, nil
+}
+
 func (uc *chatUseCase) CreateChat(ctx context.Context, chat *model.Chat, myuserID int64) (int64, error) {
 	chatID, err := uc.repo.Create(ctx, chat)
-	if err != nil {
-		return 0, err
-	}
-	err = uc.chatMembersUsecase.AddUserToChat(ctx, chatID, myuserID, "admin", myuserID)
 	if err != nil {
 		return 0, err
 	}

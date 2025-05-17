@@ -11,6 +11,7 @@ type UserUseCase interface {
 	GetCurrentUser(ctx context.Context, userID int64) (*model.User, error)
 	GetByUsername(ctx context.Context, username string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
+	GetUsersByIDs(ctx context.Context, userIDs []int64) ([]*model.User, error) // <-- добавлено
 }
 
 type userUseCase struct {
@@ -23,6 +24,20 @@ func NewUserUseCase(repo postgres.UserRepo) UserUseCase {
 
 func (uc *userUseCase) GetCurrentUser(ctx context.Context, userID int64) (*model.User, error) {
 	return uc.repo.GetByID(ctx, userID)
+}
+
+func (uc *userUseCase) GetUsersByIDs(ctx context.Context, userIDs []int64) ([]*model.User, error) {
+	var users []*model.User
+
+	for _, id := range userIDs {
+		user, err := uc.repo.GetByID(ctx, id)
+		if err != nil || user == nil {
+			continue // Пропускаем ошибку или если пользователь не найден
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
 }
 
 func (uc *userUseCase) CreateUser(ctx context.Context, user *model.User) error {

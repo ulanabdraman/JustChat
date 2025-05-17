@@ -18,6 +18,7 @@ func NewChatHandler(r *gin.RouterGroup, uc usecase.ChatUsecase) {
 	chats := r.Group("/chat")
 	{
 		chats.GET("/:id", h.GetChat)
+		chats.POST("/get", h.GetChats)
 		chats.POST("/", h.CreateChat)
 		chats.PUT("/:id", h.UpdateChatName)
 		chats.DELETE("/:id", h.DeleteChat)
@@ -39,6 +40,38 @@ func (h *ChatHandler) GetChat(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, chat)
+}
+
+func (h *ChatHandler) GetChats(c *gin.Context) {
+	type ChatIDsRequest struct {
+		Chats []int64 `json:"chats"`
+	}
+	var req ChatIDsRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat_ids array"})
+		return
+	}
+
+	if len(req.Chats) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chat_ids cannot be empty"})
+		return
+	}
+
+	myuserIDStr := c.GetHeader("X-User-ID")
+	myuserID, err := strconv.ParseInt(myuserIDStr, 10, 64)
+	if err != nil || myuserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	chats, err := h.uc.GetChatsByIDs(c.Request.Context(), req.Chats, myuserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, chats)
 }
 
 func (h *ChatHandler) CreateChat(c *gin.Context) {

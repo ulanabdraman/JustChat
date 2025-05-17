@@ -2,21 +2,19 @@ package main
 
 import (
 	"JustChat/db"
-	"JustChat/internal/realtime/websock/transport"
-	"context"
-	"github.com/gin-contrib/cors"
-	"time"
-
 	authHand "JustChat/internal/auth/delivery/http"
 	authUCpkg "JustChat/internal/auth/usecase"
-
-	chatmembersHand "JustChat/internal/chatmembers/delivery/http"
-	chatmembersRepo "JustChat/internal/chatmembers/repository/postgres"
-	chatmembersUC "JustChat/internal/chatmembers/usecase"
+	"net/http"
+	"os/signal"
+	"syscall"
 
 	chatHand "JustChat/internal/chat/delivery/http"
 	chatRepo "JustChat/internal/chat/repository/postgres"
 	chatUC "JustChat/internal/chat/usecase"
+
+	chatmembersHand "JustChat/internal/chatmembers/delivery/http"
+	chatmembersRepo "JustChat/internal/chatmembers/repository/postgres"
+	chatmembersUC "JustChat/internal/chatmembers/usecase"
 
 	messageHand "JustChat/internal/messages/delivery/http"
 	messageRepo "JustChat/internal/messages/repository/postgres"
@@ -27,19 +25,26 @@ import (
 	userUCpkg "JustChat/internal/users/usecase"
 
 	WSHand "JustChat/internal/realtime/websock/handler"
+	WSTP "JustChat/internal/realtime/websock/transport"
 	WSUC "JustChat/internal/realtime/websock/usecase"
+
+	StreamHub "JustChat/pkg/streamhub"
 
 	"JustChat/internal/middleware"
 
+	"context"
 	"fmt"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"log"
 	"os"
+	"time"
 )
 
 func main() {
 	dbconn := db.InitDB()
 	defer dbconn.Close()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -47,21 +52,25 @@ func main() {
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:8000"}, // или "*", если ты не паришься
+		AllowOrigins:     []string{"http://localhost:8000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-	hub := transport.NewHub()
-	messageCh := make(chan []byte, 100) // буфер на 100, чтобы не блокировать горутины
 
-	WSUsecase := WSUC.NewWebSockUsecase(hub)
-	WSHandler := WSHand.NewWebSockHandler(messageCh, WSUsecase)
+	streamHub := StreamHub.NewStreamHub(100)
+	defer streamHub.Stop()
+	hub := WSTP.NewHub()
+	messageCh := make(chan []byte, 100)
+	defer close(messageCh)
+
+	wsUsecase := WSUC.NewWebSockUsecase(hub)
+	wsHandler := WSHand.NewWebSockHandler(messageCh, wsUsecase)
 
 	chatmembersRepository := chatmembersRepo.NewChatMemberRepository(dbconn)
-	chatmembersUsecase := chatmembersUC.NewChatMemberUseCase(chatmembersRepository)
+	chatmembersUseCase := chatmembersUC.NewChatMemberUseCase(chatmembersRepository)
 
 	userRepository := userRepo.NewUserRepo(dbconn)
 	userUseCase := userUCpkg.NewUserUseCase(userRepository)
@@ -70,22 +79,20 @@ func main() {
 	authHandler := authHand.NewHandler(authUC, userUseCase)
 
 	chatRepository := chatRepo.NewChatRepo(dbconn)
-	chatUseCase := chatUC.NewChatUseCase(chatRepository, chatmembersUsecase)
+	chatUseCase := chatUC.NewChatUseCase(chatRepository, chatmembersUseCase)
 
 	messageRepository := messageRepo.NewMessageRepo(dbconn)
-	messageUseCase := messageUC.NewMessageUseCase(messageRepository, messageCh, chatmembersUsecase)
+	messageUseCase := messageUC.NewMessageUseCase(messageRepository, messageCh, chatmembersUseCase)
 
 	api := router.Group("/api")
 
 	api.POST("/login", authHandler.Login)
 	api.POST("/register", authHandler.Register)
 
-	// WebSocket
 	api.GET("/ws", func(c *gin.Context) {
-		transport.ServeWS(hub, chatUseCase, messageUseCase, authUC, c.Writer, c.Request)
+		WSTP.ServeWS(hub, chatUseCase, messageUseCase, authUC, c.Writer, c.Request)
 	})
 
-	// 401 защита
 	protected := api.Group("/")
 	protected.Use(middleware.AuthMiddleware(authUC))
 	protected.Use(cors.New(cors.Config{
@@ -96,7 +103,8 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-	chatmembersHand.NewChatMemberHandler(protected, chatmembersUsecase)
+
+	chatmembersHand.NewChatMemberHandler(protected, chatmembersUseCase)
 	chatHand.NewChatHandler(protected, chatUseCase)
 	messageHand.NewMessageHandler(protected, messageUseCase)
 	userHand.NewUserHandler(protected, userUseCase)
@@ -107,8 +115,35 @@ func main() {
 	}
 
 	go hub.Run(ctx)
-	go WSHandler.ListenAndServe(ctx)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Не удалось запустить сервер: %v", err)
+	go wsHandler.ListenAndServe(ctx)
+	go streamHub.Start()
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: router,
 	}
+
+	// Запуск сервера в отдельной горутине
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Ошибка сервера: %v\n", err)
+		}
+	}()
+
+	// Ожидание сигнала завершения
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	<-quit
+	log.Println("Выключение сервера...")
+
+	// Контекст с таймаутом для graceful shutdown
+	Grctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(Grctx); err != nil {
+		log.Fatalf("Ошибка во время shutdown: %v\n", err)
+	}
+
+	log.Println("Сервер остановлен")
 }

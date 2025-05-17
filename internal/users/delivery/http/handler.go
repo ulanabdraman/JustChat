@@ -14,9 +14,10 @@ type UserHandler struct {
 
 func NewUserHandler(r *gin.RouterGroup, uc usecase.UserUseCase) {
 	h := &UserHandler{uc: uc}
-	me := r.Group("/me")
+	me := r.Group("/users")
 	{
-		me.GET("", h.GetMe)
+		me.GET("/me", h.GetMe)
+		me.POST("/get", h.GetManyUsers)
 		me.POST("/", h.CreateUser)
 	}
 }
@@ -40,6 +41,29 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, user)
+}
+func (h *UserHandler) GetManyUsers(c *gin.Context) {
+	// Внутренняя структура для парсинга тела запроса
+	var req struct {
+		UserIDs []int64 `json:"user_ids"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_ids array"})
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_ids cannot be empty"})
+		return
+	}
+
+	users, err := h.uc.GetUsersByIDs(c.Request.Context(), req.UserIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, users)
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {

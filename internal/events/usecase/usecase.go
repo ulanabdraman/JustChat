@@ -24,6 +24,7 @@ func NewEventUseCase(repo repository.EventRepo) EventUseCase {
 func (uc *eventUseCase) RecordNameChangedEvent(ctx context.Context, chatID int64, oldName string, newName string, changedByID int64) error {
 	event := &model.EventNameChanged{
 		Type:        "NameChanged",
+		CreatorID:   0,
 		ChatID:      chatID,
 		OldName:     oldName,
 		NewName:     newName,
@@ -38,6 +39,7 @@ func (uc *eventUseCase) RecordNameChangedEvent(ctx context.Context, chatID int64
 func (uc *eventUseCase) RecordUserAddedEvent(ctx context.Context, chatID int64, userID int64, addedByID int64) error {
 	event := &model.EventUserAdded{
 		Type:      "UserAdded",
+		CreatorID: 0,
 		ChatID:    chatID,
 		UserID:    userID,
 		AddedByID: addedByID,
@@ -51,6 +53,7 @@ func (uc *eventUseCase) RecordUserAddedEvent(ctx context.Context, chatID int64, 
 func (uc *eventUseCase) RecordUserRemovedEvent(ctx context.Context, chatID int64, userID int64, removedByID int64) error {
 	event := &model.EventUserRemoved{
 		Type:        "UserRemoved",
+		CreatorID:   0,
 		ChatID:      chatID,
 		UserID:      userID,
 		RemovedByID: removedByID,
