@@ -1,8 +1,9 @@
-package mongodb
+package repository
 
 import (
 	"context"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"time"
 
 	"JustChat/internal/messages/model"
@@ -10,38 +11,28 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type MessageRepo interface {
-	GetByID(ctx context.Context, id string) (*model.Message, error)
-	GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error)
-	SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error)
-	DeleteByID(ctx context.Context, id string) error
-}
-
-type messageRepo struct {
+type messageRepoMongoDB struct {
 	db *mongo.Database
 }
 
-func NewMessageRepo(db *mongo.Database) MessageRepo {
-	return &messageRepo{db: db}
+func NewMessageRepoMongoDB(db *mongo.Database) MessageRepo {
+	return &messageRepoMongoDB{db: db}
 }
 
 // MessageRepo Methods
 
-func (m *messageRepo) GetByID(ctx context.Context, id string) (*model.Message, error) {
+func (m *messageRepoMongoDB) GetByID(ctx context.Context, id int64) (*model.Message, error) {
 	collection := m.db.Collection("messages")
 	filter := bson.M{"_id": id, "deleted": false}
 	var message model.Message
 	err := collection.FindOne(ctx, filter).Decode(&message)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("GetByID message repo: %w", err)
 	}
 	return &message, nil
 }
 
-func (m *messageRepo) GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error) {
+func (m *messageRepoMongoDB) GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error) {
 	collection := m.db.Collection("messages")
 	filter := bson.M{"chat_id": chatID, "deleted": false}
 	var messages []model.Message
@@ -67,18 +58,23 @@ func (m *messageRepo) GetByChatID(ctx context.Context, chatID int64) ([]model.Me
 	return messages, nil
 }
 
-func (m *messageRepo) SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error) {
+func (m *messageRepoMongoDB) SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error) {
 	collection := m.db.Collection("messages")
+
+	id, err := m.getNextSequence(ctx, m.db, "messages")
+	if err != nil {
+		return nil, fmt.Errorf("generate ID: %w", err)
+	}
+	message.ID = id
 	message.SentAt = time.Now()
-	result, err := collection.InsertOne(ctx, message)
+	_, err = collection.InsertOne(ctx, message)
 	if err != nil {
 		return nil, fmt.Errorf("SaveMessage message repo: %w", err)
 	}
-	message.ID = result.InsertedID.(int64)
 	return message, nil
 }
 
-func (m *messageRepo) DeleteByID(ctx context.Context, id string) error {
+func (m *messageRepoMongoDB) DeleteByID(ctx context.Context, id int64) error {
 	collection := m.db.Collection("messages")
 	filter := bson.M{"_id": id, "deleted": false}
 	update := bson.M{"$set": bson.M{"deleted": true}}
@@ -87,4 +83,21 @@ func (m *messageRepo) DeleteByID(ctx context.Context, id string) error {
 		return fmt.Errorf("DeleteByID message repo: %w", err)
 	}
 	return nil
+}
+func (m *messageRepoMongoDB) getNextSequence(ctx context.Context, db *mongo.Database, name string) (int64, error) {
+	var result struct {
+		Seq int64 `bson:"seq"`
+	}
+	filter := bson.M{"_id": name}
+	update := bson.M{"$inc": bson.M{"seq": 1}}
+
+	opts := options.FindOneAndUpdate().
+		SetUpsert(true).                 // создаёт документ, если не существует
+		SetReturnDocument(options.After) // вернёт новое значение seq
+
+	err := db.Collection("counters").FindOneAndUpdate(ctx, filter, update, opts).Decode(&result)
+	if err != nil {
+		return 0, fmt.Errorf("getNextSequence: %w", err)
+	}
+	return result.Seq, nil
 }

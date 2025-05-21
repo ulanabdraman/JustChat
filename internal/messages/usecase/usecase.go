@@ -3,7 +3,7 @@ package usecase
 import (
 	ChatMembersUC "JustChat/internal/chatmembers/usecase"
 	"JustChat/internal/messages/model"
-	"JustChat/internal/messages/repository/postgres"
+	"JustChat/internal/messages/repository"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,12 +17,12 @@ type MessageUseCase interface {
 	DeleteMessage(ctx context.Context, messageID int64, myuserID int64) error
 }
 type messageUseCase struct {
-	repo              postgres.MessageRepo
+	repo              repository.MessageRepo
 	messageCh         chan<- []byte
 	chatMemberUsecase ChatMembersUC.ChatMemberUseCase
 }
 
-func NewMessageUseCase(messageRepo postgres.MessageRepo, messageCh chan<- []byte, chatmemberUsecase ChatMembersUC.ChatMemberUseCase) MessageUseCase {
+func NewMessageUseCase(messageRepo repository.MessageRepo, messageCh chan<- []byte, chatmemberUsecase ChatMembersUC.ChatMemberUseCase) MessageUseCase {
 	return &messageUseCase{repo: messageRepo, messageCh: messageCh, chatMemberUsecase: chatmemberUsecase}
 }
 func (m messageUseCase) GetMessageByID(ctx context.Context, messageID int64, myuserID int64) (*model.Message, error) {
@@ -71,6 +71,7 @@ func (m messageUseCase) SaveMessage(ctx context.Context, message *model.Message,
 	if err != nil {
 		return nil, err
 	}
+	message.Type = "message"
 	savedmessage, err := m.repo.SaveMessage(ctx, message)
 	if err != nil {
 		return nil, err

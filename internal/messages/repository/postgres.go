@@ -1,4 +1,4 @@
-package postgres
+package repository
 
 import (
 	"JustChat/internal/messages/model"
@@ -7,20 +7,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-type MessageRepo interface {
-	GetByID(ctx context.Context, id int64) (*model.Message, error)
-	GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error)
-	SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error)
-	DeleteByID(ctx context.Context, id int64) error
-}
-type messageRepo struct {
+type messageRepoPostgres struct {
 	db *sqlx.DB
 }
 
-func NewMessageRepo(db *sqlx.DB) MessageRepo {
-	return &messageRepo{db: db}
+func NewMessageRepoPostgres(db *sqlx.DB) MessageRepo {
+	return &messageRepoPostgres{db: db}
 }
-func (m *messageRepo) GetByID(ctx context.Context, id int64) (*model.Message, error) {
+func (m *messageRepoPostgres) GetByID(ctx context.Context, id int64) (*model.Message, error) {
 	query := `SELECT id,chat_id,creator_id,text,sent_at FROM messages WHERE id=$1 AND deleted=false`
 	row := m.db.QueryRowContext(ctx, query, id)
 	var message model.Message
@@ -30,7 +24,7 @@ func (m *messageRepo) GetByID(ctx context.Context, id int64) (*model.Message, er
 	}
 	return &message, nil
 }
-func (m *messageRepo) DeleteByID(ctx context.Context, id int64) error {
+func (m *messageRepoPostgres) DeleteByID(ctx context.Context, id int64) error {
 	query := `UPDATE messages SET deleted=true WHERE id=$1 AND deleted=false`
 	_, err := m.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -38,7 +32,7 @@ func (m *messageRepo) DeleteByID(ctx context.Context, id int64) error {
 	}
 	return nil
 }
-func (m *messageRepo) GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error) {
+func (m *messageRepoPostgres) GetByChatID(ctx context.Context, chatID int64) ([]model.Message, error) {
 	query := `SELECT id, chat_id, creator_id, text, sent_at FROM messages WHERE chat_id=$1 AND deleted=false`
 	rows, err := m.db.QueryContext(ctx, query, chatID)
 	if err != nil {
@@ -61,7 +55,7 @@ func (m *messageRepo) GetByChatID(ctx context.Context, chatID int64) ([]model.Me
 	}
 	return messages, nil
 }
-func (m *messageRepo) SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error) {
+func (m *messageRepoPostgres) SaveMessage(ctx context.Context, message *model.Message) (*model.Message, error) {
 	query := `
 		INSERT INTO messages(chat_id, creator_id, text)
 		VALUES ($1, $2, $3)

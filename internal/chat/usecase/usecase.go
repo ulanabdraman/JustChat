@@ -60,7 +60,7 @@ func (uc *chatUseCase) GetChatsByIDs(ctx context.Context, chatIDs []int64, myuse
 }
 
 func (uc *chatUseCase) CreateChat(ctx context.Context, chat *model.Chat, myuserID int64) (int64, error) {
-	chatID, err := uc.repo.Create(ctx, chat)
+	chatID, err := uc.repo.Create(ctx, chat, myuserID)
 	if err != nil {
 		return 0, err
 	}

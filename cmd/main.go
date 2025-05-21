@@ -17,7 +17,7 @@ import (
 	chatmembersUC "JustChat/internal/chatmembers/usecase"
 
 	messageHand "JustChat/internal/messages/delivery/http"
-	messageRepo "JustChat/internal/messages/repository/postgres"
+	messageRepo "JustChat/internal/messages/repository"
 	messageUC "JustChat/internal/messages/usecase"
 
 	userHand "JustChat/internal/users/delivery/http"
@@ -28,10 +28,10 @@ import (
 	WSTP "JustChat/internal/realtime/websock/transport"
 	WSUC "JustChat/internal/realtime/websock/usecase"
 
+	DBListener "JustChat/pkg/dblisteners"
 	StreamHub "JustChat/pkg/streamhub"
 
 	"JustChat/internal/middleware"
-
 	"context"
 	"fmt"
 	"github.com/gin-contrib/cors"
@@ -42,11 +42,12 @@ import (
 )
 
 func main() {
-	dbconn := db.InitDB()
-	defer dbconn.Close()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	sqldb, pgxdb, mongodb := db.InitDB(ctx)
+	defer sqldb.Close()
+	defer pgxdb.Close(ctx)
+	defer mongodb.Client().Disconnect(ctx)
 
 	fmt.Println("Приложение запущено, база данных подключена.")
 
@@ -65,23 +66,30 @@ func main() {
 	hub := WSTP.NewHub()
 	messageCh := make(chan []byte, 100)
 	defer close(messageCh)
-
+	psqlListener, err := DBListener.NewPostgresNotifyListener(ctx, pgxdb, "general_channel", streamHub)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mongodbListener, err := DBListener.NewMongoNotifyListener(ctx, mongodb.Collection(""), streamHub)
+	if err != nil {
+		log.Fatal(err)
+	}
 	wsUsecase := WSUC.NewWebSockUsecase(hub)
 	wsHandler := WSHand.NewWebSockHandler(messageCh, wsUsecase)
 
-	chatmembersRepository := chatmembersRepo.NewChatMemberRepository(dbconn)
+	chatmembersRepository := chatmembersRepo.NewChatMemberRepository(sqldb)
 	chatmembersUseCase := chatmembersUC.NewChatMemberUseCase(chatmembersRepository)
 
-	userRepository := userRepo.NewUserRepo(dbconn)
+	userRepository := userRepo.NewUserRepo(sqldb)
 	userUseCase := userUCpkg.NewUserUseCase(userRepository)
 
 	authUC := authUCpkg.NewJWTUsecase("supersecret")
 	authHandler := authHand.NewHandler(authUC, userUseCase)
 
-	chatRepository := chatRepo.NewChatRepo(dbconn)
+	chatRepository := chatRepo.NewChatRepo(sqldb)
 	chatUseCase := chatUC.NewChatUseCase(chatRepository, chatmembersUseCase)
 
-	messageRepository := messageRepo.NewMessageRepo(dbconn)
+	messageRepository := messageRepo.NewMessageRepoMongoDB(mongodb)
 	messageUseCase := messageUC.NewMessageUseCase(messageRepository, messageCh, chatmembersUseCase)
 
 	api := router.Group("/api")
@@ -117,6 +125,14 @@ func main() {
 	go hub.Run(ctx)
 	go wsHandler.ListenAndServe(ctx)
 	go streamHub.Start()
+	err = psqlListener.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = mongodbListener.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	srv := &http.Server{
 		Addr:    ":8080",
